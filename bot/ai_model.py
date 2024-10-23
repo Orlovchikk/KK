@@ -1,7 +1,8 @@
 import json
-from dotenv import load_dotenv
 import os
 from os.path import dirname, join
+
+from dotenv import load_dotenv
 from langchain_community.chat_models import GigaChat
 from langchain_core.messages import HumanMessage
 
