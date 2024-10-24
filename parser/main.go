@@ -7,7 +7,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -79,7 +81,7 @@ func getGroupNames(groupIDs []int, token string) (bool, GroupInfoResponse) {
 }
 
 func getGroups(userID, token string) (bool, GroupInfoResponse) {
-	url := fmt.Sprintf("https://api.vk.com/method/groups.get?user_id=%s&extended=0&access_token=%s&v=5.131", userID, token)
+	url := fmt.Sprintf("https://api.vk.com/method/groups.get?user_id=%s&access_token=%s&v=5.131", userID, token)
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -137,6 +139,41 @@ func getPosts(userID, token string) (bool, WallResponse) {
 	return true, wall
 }
 
+type User struct {
+	ID int `json:"id"`
+}
+
+type UsersResponse struct {
+	Response []User `json:"response"`
+}
+
+func getUserID(username, token string) (string, error) {
+	url := fmt.Sprintf("https://api.vk.com/method/users.get?user_ids=%s&access_token=%s&v=5.131", username, token)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var usersResponse UsersResponse
+	err = json.Unmarshal(body, &usersResponse)
+	if err != nil {
+		return "", err
+	}
+
+	if len(usersResponse.Response) == 0 {
+		return "", fmt.Errorf("user not found")
+	}
+
+	return fmt.Sprintf("%d", usersResponse.Response[0].ID), nil
+}
+
 type ResultJSON struct {
 	Success       bool            `json:"success"`
 	Posts         map[string]Post `json:"posts"`
@@ -160,12 +197,40 @@ func finalMarshal(subscriptions GroupInfoResponse, wall WallResponse, success bo
 	resultJSON := ResultJSON{
 		Success:       success,
 		Posts:         posts,
-		Subscriptions: subs,
+		Subscriptions: []string{},
 	}
 	return resultJSON
 }
 
-func main() {
+func parseVKLink(vkURL string, token string) (string, error) {
+	// Разбираем URL
+	u, err := url.Parse(vkURL)
+	if err != nil {
+		return "", err
+	}
+
+	// Получаем последний сегмент пути (логин или ID)
+	pathParts := strings.Split(u.Path, "/")
+	lastPart := pathParts[len(pathParts)-1]
+
+	// Проверяем, является ли последний сегмент числом (ID)
+	isID, err := regexp.MatchString(`^\d+$`, lastPart)
+	if err != nil {
+		return "", err
+	}
+
+	if isID {
+		// Если это числовой ID, просто преобразуем его в int
+		var userID int
+		fmt.Sscanf(lastPart, "%d", &userID)
+		return string(userID), nil
+	} else {
+		// Если это логин, запрашиваем ID через API
+		return getUserID(lastPart, token)
+	}
+}
+
+func MakeResult(vkURL string) {
 	loadEnv()
 
 	// Получаем токен из .env
@@ -173,7 +238,10 @@ func main() {
 	if token == "" {
 		log.Fatalf("VK_ACCESS_TOKEN not set in .env file")
 	}
-	userID := "7064629"
+	userID, err := parseVKLink(vkURL, token)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	isPosts, posts := getPosts(userID, token)
 	isGroups, groups := getGroups(userID, token)
@@ -181,4 +249,8 @@ func main() {
 
 	resultJSON := finalMarshal(groups, posts, success)
 	fmt.Println(resultJSON)
+}
+
+func main() {
+	MakeResult("https://vk.com/tatianalarina_official")
 }
