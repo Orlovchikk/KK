@@ -2,30 +2,20 @@ import asyncio
 import os
 from os.path import dirname, join
 
+import requests
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart, or_f
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
-    KeyboardButton,
 )
+from database import Database
 from dotenv import load_dotenv
-import requests
-
 from model import analyze_profile
-from database import (
-    create_user,
-    get_balance,
-    get_balance_by_uniq_code,
-    increase_balance,
-    link_user_to_balance,
-    create_uniq_code,
-    get_uniq_code,
-    decrerase_balance,
-)
 from utils import validate_url
 
 dotenv_path = join(dirname(__file__), ".env")
@@ -36,10 +26,12 @@ bot = Bot(token=TOKEN)
 
 dp = Dispatcher()
 
+db = Database()
+
 
 # Command '/start'
 async def command_start_handler(message: Message):
-    create_user(message.from_user.id)
+    await db.create_user(message.from_user.id)
     await message.answer(
         f"""Привет, {message.from_user.first_name}!
 LinkLens - это Помощник для HR по созданию профиля человека на основе его поведения в соцсетях, построенный на базе технологии искусственного интеллекта. Для проверки профиля, просто пришли ссылку на VK""",
@@ -74,9 +66,9 @@ async def command_send_code(message: Message):
     else:
         command_parts = message.text.split()
         attribute = command_parts[1]
-        balance = get_balance_by_uniq_code(attribute)
+        balance = await db.get_balance_by_uniq_code(attribute)
         if balance:
-            link_user_to_balance(message.from_user.id, balance.id)
+            await db.link_user_to_balance(message.from_user.id, balance.id)
             await message.answer("Ты успешно привязан к аккаунту")
         else:
             await message.answer(
@@ -88,16 +80,16 @@ async def command_send_code(message: Message):
 @dp.message(or_f(Command("get_code"), F.text == "Мой секретный код"))
 async def command_create_code(message: Message):
     user = message.from_user
-    create_uniq_code(user.id)
-    uniq_code = get_uniq_code(user.id)
+    await db.create_uniq_code(user.id)
+    uniq_code = await db.get_uniq_code(user.id)
     await message.answer(f"Твой секретный код: {uniq_code}")
 
 
 # Command '/tokens'
 @dp.message(or_f(Command("tokens"), F.text == "Купить токены 💸"))
 async def command_tokens_handler(message: Message):
-    is_owner = get_balance(message.from_user.id).owner_id == str(message.from_user.id)
-    if is_owner:
+    balance = await db.get_balance(message.from_user.id)
+    if balance.owner_id == str(message.from_user.id):
         await message.answer(
             "Выбери количество токенов, которые хочешь купить",
             reply_markup=InlineKeyboardMarkup(
@@ -131,7 +123,7 @@ async def command_tokens_handler(message: Message):
 
 # Callback for buttons '{}_tokens" in command '/tokens'
 async def update_balance_and_notify(callback_query: CallbackQuery, amount: int):
-    increase_balance(callback_query.from_user.id, amount)
+    await db.increase_balance(callback_query.from_user.id, amount)
 
     await callback_query.message.answer(
         f"Баланс пополнен на {amount} токенов, можешь использовать их через /analyze"
@@ -154,7 +146,7 @@ async def tokens_callback_handler(callback_query: CallbackQuery):
 # Command '/balance'
 @dp.message(or_f(Command("balance"), F.text == "Баланс 💰"))
 async def command_balance(message: Message):
-    user_balance = get_balance(message.from_user.id)
+    user_balance = await db.get_balance(message.from_user.id)
     await message.answer(f"Ваш баланс: {user_balance.amount}")
 
 
@@ -163,7 +155,8 @@ async def command_balance(message: Message):
 async def vk_profile_link_hanldler(message: Message):
     text = message.text
     user = message.from_user
-    if get_balance(user.id).amount > 0:
+    balance = await db.get_balance(user.id)
+    if balance.amount > 0:
         try:
             if validate_url(text):
                 await message.answer("Обрабатываем профиль, подожди немного")
@@ -172,14 +165,14 @@ async def vk_profile_link_hanldler(message: Message):
                     "http://parser:8000/parse", json={"link": text}
                 )
                 response.raise_for_status()
-                analyze = analyze_profile(response.json()["result"])
+                analyze = await analyze_profile(response.json()["result"])
                 if analyze == "Недостаточно данных о пользователе":
                     await message.answer(
                         "Мы не нашли достаточно информации о профиле, за такую попытку токен не был списан. Попробуй отправить другую ссылку"
                     )
                 else:
                     await message.answer(analyze)
-                    decrerase_balance(user.id)
+                    await db.decrease_balance(user.id)
                     await message.answer("Готово! С баланса списан 1 токен")
 
             else:
@@ -204,6 +197,7 @@ def register_handlers(dp: Dispatcher):
 
 
 async def main():
+    await db.create_metadata()
     register_handlers(dp)
     await dp.start_polling(bot)
 
