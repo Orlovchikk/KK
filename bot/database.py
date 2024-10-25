@@ -26,7 +26,7 @@ class Balance(Base):
 
 
 engine = create_engine(
-    "postgresql+psycopg2://postgres:postgres@localhost:5432/postgres", echo=True
+    "postgresql+psycopg2://postgres:postgres@postgres-LinkLens:5432/postgres", echo=True
 )
 
 Base.metadata.create_all(bind=engine)

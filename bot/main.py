@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from os.path import dirname, join
 
@@ -11,8 +12,9 @@ from aiogram.types import (
     Message,
 )
 from dotenv import load_dotenv
+import requests
 
-from ai_model import Model
+from model import analyze_profile
 from database import (
     create_user,
     get_balance,
@@ -39,16 +41,16 @@ dp = Dispatcher()
 async def command_start_handler(message: Message):
     create_user(message.from_user.id)
     await message.answer(
-        f"""Привет, {message.from_user.full_name}!
-LinkLens - это Помощник для HR по созданию профиля человека на основе его поведения в соцсетях, построенный на базе технологии искусственного интеллекта.
-Нажми на "Прислать секретный код" или на "Подробнее", чтобы узнать о том, как получить его.""",
+        f"""Привет, {message.from_user.first_name}!
+LinkLens - это Помощник для HR по созданию профиля человека на основе его поведения в соцсетях, построенный на базе технологии искусственного интеллекта.""",
     )
 
 
 @dp.message(Command("help"))
 async def command_help(message: Message):
     await message.answer(
-        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль"
+        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль\n/balance - вывести текущий баланс\nget_code - получить секретный код\n\
+            /send_code - отправить код"
     )
 
 
@@ -82,7 +84,7 @@ async def command_create_code(message: Message):
     user = message.from_user
     create_uniq_code(user.id)
     uniq_code = get_uniq_code(user.id)
-    await message.answer(f"Секретный код: {uniq_code}")
+    await message.answer(f"Твой секретный код: {uniq_code}")
 
 
 # Command '/tokens'
@@ -154,7 +156,7 @@ async def command_balance(message: Message):
 @dp.message(Command("analyze"))
 async def command_analyze_handler(message: Message):
     if len(message.text.split()) < 2:
-        await message.answer("Пришли ссылку")
+        await message.answer("Ты не прислал ссылку, попробуй еще раз")
     else:
         command_parts = message.text.split()
         attribute = command_parts[1]
@@ -163,13 +165,24 @@ async def command_analyze_handler(message: Message):
             try:
                 if validate_url(attribute):
                     await message.answer("Обрабатываем профиль, подожди немного")
-                    analyze = Model.analyze_profile(attribute)
-                    await message.answer("Готово! С баланса списан 1 токен")
-                    await message.answer(analyze)
-                    decrerase_balance(user.id)
+                    response = requests.post(
+                        "http://parser:8000/parse", json={"link": attribute}
+                    )
+                    response.raise_for_status()
+                    analyze = analyze_profile(response.json()["result"])
+                    if analyze == "Недостаточно данных о пользователе":
+                        await message.answer(
+                            "Мы не нашли достаточно информации о профиле, за такую попытку токен не был списан. Попробуй отправить другую ссылку"
+                        )
+                    else:
+                        await message.answer(analyze)
+                        decrerase_balance(user.id)
+                        await message.answer("Готово! С баланса списан 1 токен")
+
                 else:
                     await message.answer("Пришли ссылку на профиль VK")
             except Exception as e:
+                print(e)
                 await message.answer(
                     "Произошла ошибка при обработке ссылки. Попробуйте еще раз."
                 )

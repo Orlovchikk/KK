@@ -230,17 +230,38 @@ func parseVKLink(vkURL string, token string) (string, error) {
 	}
 }
 
-func MakeResult(vkURL string) {
-	loadEnv()
+type ParseRequest struct {
+	Link string `json:"link"`
+}
 
-	// Получаем токен из .env
+type ParseResponse struct {
+	Result string `json:"result"`
+}
+
+func parseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ParseRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	loadEnv()
 	token := os.Getenv("VK_ACCESS_TOKEN")
 	if token == "" {
-		log.Fatalf("VK_ACCESS_TOKEN not set in .env file")
+		http.Error(w, "VK_ACCESS_TOKEN not set", http.StatusInternalServerError)
+		return
 	}
-	userID, err := parseVKLink(vkURL, token)
+	userID, err := parseVKLink(req.Link, token)
+
 	if err != nil {
-		log.Fatal(err)
+		http.Error(w, fmt.Sprintf("Error parsing VK link: %v", err), http.StatusBadRequest)
+		return
 	}
 
 	isPosts, posts := getPosts(userID, token)
@@ -248,9 +269,24 @@ func MakeResult(vkURL string) {
 	success := isPosts && isGroups
 
 	resultJSON := finalMarshal(groups, posts, success)
-	fmt.Println(resultJSON)
+
+	resultJSONStr, err := json.Marshal(resultJSON)
+
+	if err != nil {
+		http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+		return
+	}
+
+	response := ParseResponse{Result: string(resultJSONStr)}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func main() {
-	MakeResult("https://vk.com/tatianalarina_official")
+	loadEnv()
+
+	http.HandleFunc("/parse", parseHandler)
+
+	fmt.Println("Parser listening on port 8000")
+	log.Fatal(http.ListenAndServe(":8000", nil))
 }

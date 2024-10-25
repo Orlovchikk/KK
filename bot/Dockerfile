@@ -15,4 +15,6 @@ RUN poetry install --no-interaction
 
 COPY . .
 
-CMD ["uvicorn", "main:dp", "--reload"]
+EXPOSE 8001
+
+CMD ["python", "bot/main.py"]
