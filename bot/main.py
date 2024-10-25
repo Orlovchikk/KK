@@ -1,15 +1,16 @@
 import asyncio
-import json
 import os
 from os.path import dirname, join
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, or_f
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 from dotenv import load_dotenv
 import requests
@@ -37,12 +38,24 @@ dp = Dispatcher()
 
 
 # Command '/start'
-@dp.message(CommandStart())
 async def command_start_handler(message: Message):
     create_user(message.from_user.id)
     await message.answer(
         f"""Привет, {message.from_user.first_name}!
-LinkLens - это Помощник для HR по созданию профиля человека на основе его поведения в соцсетях, построенный на базе технологии искусственного интеллекта.""",
+LinkLens - это Помощник для HR по созданию профиля человека на основе его поведения в соцсетях, построенный на базе технологии искусственного интеллекта. Для проверки профиля, просто пришли ссылку на VK""",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(text="Купить токены 💸"),
+                    KeyboardButton(text="Баланс 💰"),
+                ],
+                [
+                    KeyboardButton(text="Прислать секретный код 🙈"),
+                    KeyboardButton(text="Мой секретный код"),
+                ],
+            ],
+            resize_keyboard=True,
+        ),
     )
 
 
@@ -54,14 +67,7 @@ async def command_help(message: Message):
     )
 
 
-@dp.message(Command("more_info"))
-async def process_start(message: Message):
-    await message.answer(
-        "Чтобы получить токены, напиши своему руководителю для получения секретного кода, либо купи токены через /tokens. ",
-    )
-
-
-@dp.message(Command("send_code"))
+@dp.message(or_f(Command("send_code"), F.text == "Прислать секретный код 🙈"))
 async def command_send_code(message: Message):
     if len(message.text.split()) < 2:
         await message.answer("Введите код")
@@ -79,7 +85,7 @@ async def command_send_code(message: Message):
 
 
 # Command '/get_code'
-@dp.message(Command("get_code"))
+@dp.message(or_f(Command("get_code"), F.text == "Мой секретный код"))
 async def command_create_code(message: Message):
     user = message.from_user
     create_uniq_code(user.id)
@@ -88,7 +94,7 @@ async def command_create_code(message: Message):
 
 
 # Command '/tokens'
-@dp.message(Command("tokens"))
+@dp.message(or_f(Command("tokens"), F.text == "Купить токены 💸"))
 async def command_tokens_handler(message: Message):
     is_owner = get_balance(message.from_user.id).owner_id == str(message.from_user.id)
     if is_owner:
@@ -146,50 +152,47 @@ async def tokens_callback_handler(callback_query: CallbackQuery):
 
 
 # Command '/balance'
-@dp.message(Command("balance"))
+@dp.message(or_f(Command("balance"), F.text == "Баланс 💰"))
 async def command_balance(message: Message):
     user_balance = get_balance(message.from_user.id)
     await message.answer(f"Ваш баланс: {user_balance.amount}")
 
 
-# Command '/analyze'
-@dp.message(Command("analyze"))
-async def command_analyze_handler(message: Message):
-    if len(message.text.split()) < 2:
-        await message.answer("Ты не прислал ссылку, попробуй еще раз")
-    else:
-        command_parts = message.text.split()
-        attribute = command_parts[1]
-        user = message.from_user
-        if get_balance(user.id).amount > 0:
-            try:
-                if validate_url(attribute):
-                    await message.answer("Обрабатываем профиль, подожди немного")
-                    response = requests.post(
-                        "http://parser:8000/parse", json={"link": attribute}
-                    )
-                    response.raise_for_status()
-                    analyze = analyze_profile(response.json()["result"])
-                    if analyze == "Недостаточно данных о пользователе":
-                        await message.answer(
-                            "Мы не нашли достаточно информации о профиле, за такую попытку токен не был списан. Попробуй отправить другую ссылку"
-                        )
-                    else:
-                        await message.answer(analyze)
-                        decrerase_balance(user.id)
-                        await message.answer("Готово! С баланса списан 1 токен")
-
-                else:
-                    await message.answer("Пришли ссылку на профиль VK")
-            except Exception as e:
-                print(e)
-                await message.answer(
-                    "Произошла ошибка при обработке ссылки. Попробуйте еще раз."
+# vk profile link handler
+@dp.message(F.text.regexp("https://vk\.com/[A-Za-z0-9]+"))
+async def vk_profile_link_hanldler(message: Message):
+    text = message.text
+    user = message.from_user
+    if get_balance(user.id).amount > 0:
+        try:
+            if validate_url(text):
+                await message.answer("Обрабатываем профиль, подожди немного")
+                print(text)
+                response = requests.post(
+                    "http://parser:8000/parse", json={"link": text}
                 )
-        else:
+                response.raise_for_status()
+                analyze = analyze_profile(response.json()["result"])
+                if analyze == "Недостаточно данных о пользователе":
+                    await message.answer(
+                        "Мы не нашли достаточно информации о профиле, за такую попытку токен не был списан. Попробуй отправить другую ссылку"
+                    )
+                else:
+                    await message.answer(analyze)
+                    decrerase_balance(user.id)
+                    await message.answer("Готово! С баланса списан 1 токен")
+
+            else:
+                await message.answer("Пришли ссылку на профиль VK")
+        except Exception as e:
+            print(e)
             await message.answer(
-                "Упс, кажется не хватает токенов. Пополни баланс через /tokens"
+                "Произошла ошибка при обработке ссылки. Попробуйте еще раз."
             )
+    else:
+        await message.answer(
+            "Упс, кажется не хватает токенов. Пополни баланс через /tokens"
+        )
 
 
 def register_handlers(dp: Dispatcher):
