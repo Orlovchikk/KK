@@ -1,5 +1,8 @@
+import os
 import random
+from os.path import dirname, join
 
+from dotenv import load_dotenv
 from sqlalchemy import Column, ForeignKey, Integer, String, exc, select
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
@@ -8,6 +11,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+dotenv_path = join(dirname(__file__), ".env")
+load_dotenv(dotenv_path)
+
+HOST = os.getenv("HOST")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+PGUSER = os.getenv("PGUSER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+PORT = os.getenv("PORT")
+url = f"postgresql+asyncpg://{PGUSER}:{POSTGRES_PASSWORD}@{HOST}:{PORT}/{POSTGRES_DB}"
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -34,7 +47,7 @@ class Balance(Base):
 class Database:
     def __init__(self):
         self.engine = create_async_engine(
-            "postgresql+asyncpg://postgres:postgres@postgres-LinkLens:5432/postgres",
+            url,
             echo=True,
         )
         self.session = async_sessionmaker(self.engine, expire_on_commit=False)

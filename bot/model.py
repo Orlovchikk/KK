@@ -18,6 +18,7 @@ model = GigaChat(
 
 
 async def analyze_profile(data):
+    return "model answer"
     result = model.invoke(
         [
             SystemMessage(

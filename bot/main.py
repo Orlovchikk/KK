@@ -5,6 +5,8 @@ from os.path import dirname, join
 import requests
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart, or_f
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -16,7 +18,6 @@ from aiogram.types import (
 from database import Database
 from dotenv import load_dotenv
 from model import analyze_profile
-from utils import validate_url
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -166,29 +167,24 @@ async def vk_profile_link_hanldler(message: Message):
     balance = await db.get_balance(user.id)
     if balance.amount > 0:
         try:
-            if validate_url(text):
+            await message.answer(
+                "Обрабатываем профиль, пожалуйста, подождите немного... ⏳"
+            )
+            print(text)
+            response = requests.post("http://parser:8000/parse", json={"link": text})
+            response.raise_for_status()
+            analyze = await analyze_profile(response.json()["result"])
+            if analyze == "Недостаточно данных о пользователе":
                 await message.answer(
-                    "Обрабатываем профиль, пожалуйста, подождите немного... ⏳"
+                    "Мы не смогли найти достаточно информации о профиле. 😕 \nНе волнуйтесь, токен за эту попытку не был списан. Попробуйте отправить другую ссылку. 🔗"
                 )
-                print(text)
-                response = requests.post(
-                    "http://parser:8000/parse", json={"link": text}
-                )
-                response.raise_for_status()
-                analyze = await analyze_profile(response.json()["result"])
-                if analyze == "Недостаточно данных о пользователе":
-                    await message.answer(
-                        "Мы не смогли найти достаточно информации о профиле. 😕 \nНе волнуйтесь, токен за эту попытку не был списан. Попробуйте отправить другую ссылку. 🔗"
-                    )
-                else:
-                    await message.answer(analyze)
-                    await db.decrease_balance(user.id)
-                    await message.answer(
-                        "Готово! С вашего баланса успешно списан 1 токен. ✅"
-                    )
-
             else:
-                await message.answer("Пожалуйста, пришлите ссылку на профиль VK.")
+                await message.answer(analyze)
+                await db.decrease_balance(user.id)
+                await message.answer(
+                    "Готово! С вашего баланса успешно списан 1 токен. ✅"
+                )
+
         except Exception as e:
             print(e)
             await message.answer(
