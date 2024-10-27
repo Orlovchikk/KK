@@ -63,21 +63,28 @@ async def command_help(message: Message):
     )
 
 
+class Form(StatesGroup):
+    code = State()
+
+
+# Command '/send_code'
 @dp.message(or_f(Command("send_code"), F.text == "Прислать секретный код 🙈"))
-async def command_send_code(message: Message):
-    if len(message.text.split()) < 2:
-        await message.answer("Введите код")
+async def command_send_code(message: Message, state: FSMContext):
+    await state.set_state(Form.code)
+    await message.answer("Введите код")
+
+
+@dp.message(Form.code)
+async def process_code(message: Message, state: FSMContext):
+    balance = await db.get_balance_by_uniq_code(message.text)
+    if balance:
+        await db.link_user_to_balance(message.from_user.id, balance.id)
+        await message.answer("Ты успешно привязан к аккаунту")
     else:
-        command_parts = message.text.split()
-        attribute = command_parts[1]
-        balance = await db.get_balance_by_uniq_code(attribute)
-        if balance:
-            await db.link_user_to_balance(message.from_user.id, balance.id)
-            await message.answer("Ты успешно привязан к аккаунту")
-        else:
-            await message.answer(
-                f"К сожалению, код {attribute} оказался неверным. 😕 Попробуйте снова с помощью команды /send_code или приобретите токены через /tokens. 🛒"
-            )
+        await message.answer(
+            f"К сожалению, код {message.text} оказался неверным. 😕 Попробуйте снова с помощью команды /send_code или приобретите токены через /tokens. 🛒"
+        )
+    await state.clear()
 
 
 # Command '/get_code'
@@ -92,7 +99,7 @@ async def command_create_code(message: Message):
 # Command '/tokens'
 @dp.message(or_f(Command("tokens"), F.text == "Купить токены 💸"))
 async def command_tokens_handler(message: Message):
-    balance = await db.get_balance(message.from_user.id)
+    balance = await db.get_balance(user_id=message.from_user.id)
     if balance.owner_id == str(message.from_user.id):
         await message.answer(
             "Выберите количество токенов, которое вы хотите приобрести.",
@@ -155,7 +162,7 @@ async def tokens_callback_handler(callback_query: CallbackQuery):
 # Command '/balance'
 @dp.message(or_f(Command("balance"), F.text == "Баланс 💰"))
 async def command_balance(message: Message):
-    user_balance = await db.get_balance(message.from_user.id)
+    user_balance = await db.get_balance(user_id=message.from_user.id)
     await message.answer(f"Ваш текущий баланс: {user_balance.amount} токенов.")
 
 
@@ -164,13 +171,12 @@ async def command_balance(message: Message):
 async def vk_profile_link_hanldler(message: Message):
     text = message.text
     user = message.from_user
-    balance = await db.get_balance(user.id)
+    balance = await db.get_balance(user_id=user.id)
     if balance.amount > 0:
         try:
             await message.answer(
                 "Обрабатываем профиль, пожалуйста, подождите немного... ⏳"
             )
-            print(text)
             response = requests.post("http://parser:8000/parse", json={"link": text})
             response.raise_for_status()
             analyze = await analyze_profile(response.json()["result"])
@@ -196,11 +202,67 @@ async def vk_profile_link_hanldler(message: Message):
         )
 
 
+class Analyze_Form(StatesGroup):
+    link = State()
+
+
+@dp.message(Command("analyze"))
+async def anaylyze_handler(message: Message, state: FSMContext):
+    await state.set_state(Analyze_Form.link)
+    await message.answer("Пришлите ссылку на профиль VK. 🔗")
+
+
+async def process_link(message: Message, state: FSMContext):
+    if message.text.startswith("https://vk.com/"):
+        await state.clear()
+        await vk_profile_link_hanldler(message)
+    else:
+        await state.set_state(Analyze_Form.link)
+        message.answer("Не похоже на ссылку на профиль VK. 😟")
+        message.answer("Попробуйте еще раз, либо отправьте команду /cancel")
+
+
+@dp.message(Command("cancel"))
+async def cancel_handler(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+
+    if current_state is None:
+        return
+
+    await state.clear()
+    await message.answer("Отправление ссылки отменено")
+
+
+@dp.message(Command("users"))
+async def users_handler(message: Message, state: FSMContext):
+    await message.answer(
+        "Вот список пользователей, которые подключены к вашему балансу\nНажмите на пользователя, которого хотите удалить со своего аккаунта",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="orlovchik - потратил 3 токена",
+                        callback_data="delete_orlovchik",
+                    )
+                ]
+            ]
+        ),
+    )
+
+
+async def users_callback_handler(callback_query: CallbackQuery):
+    await callback_query.message.answer(
+        "Пользователей orlovchik удален с вашего баланса"
+    )
+
+
 def register_handlers(dp: Dispatcher):
-    dp.message.register(command_start_handler, CommandStart())
     dp.callback_query.register(
         tokens_callback_handler,
         lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens"],
+    )
+    dp.callback_query.register(
+        users_callback_handler, lambda c: c.data.startswith("delete_")
     )
 
 

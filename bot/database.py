@@ -4,12 +4,8 @@ from os.path import dirname, join
 
 from dotenv import load_dotenv
 from sqlalchemy import Column, ForeignKey, Integer, String, exc, select
-from sqlalchemy.ext.asyncio import (
-    AsyncAttrs,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import (AsyncAttrs, AsyncSession,
+                                    async_sessionmaker, create_async_engine)
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 dotenv_path = join(dirname(__file__), ".env")
@@ -40,7 +36,7 @@ class Balance(Base):
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
     amount = Column(Integer, nullable=False)
-    uniq_code = Column(Integer, nullable=True)
+    uniq_code = Column(String, nullable=True)
     users = relationship("User", backref="balance", foreign_keys=[User.balance_id])
 
 
@@ -57,7 +53,7 @@ class Database:
             await conn.run_sync(Base.metadata.create_all)
 
     async def create_user(self, user_id: int):
-        async with AsyncSession(self.engine) as db:
+        async with self.session() as db:
             try:
                 new_user = User(id=str(user_id))
                 db.add(new_user)
@@ -68,39 +64,59 @@ class Database:
                 await db.flush()
 
                 new_user.balance_id = new_balance.id
+                await db.flush()
                 await db.commit()
                 return False
             except exc.IntegrityError:
                 await db.rollback()
                 return True
 
-    async def get_user(self, user_id: int):
-        async with AsyncSession(self.engine) as db:
-            return await db.scalar(select(User).where(User.id == str(user_id)))
+    async def get_user(self, db: AsyncSession = None, user_id: int = None):
+        close_db = False
+        if db is None:
+            db = self.session()
+            close_db = True
+        try:
+            user = await db.scalar(select(User).where(User.id == str(user_id)))
+            return user
+        finally:
+            if close_db:
+                await db.close()
 
-    async def increase_balance(self, user_id: int, amount: int):
-        async with AsyncSession(self.engine) as db:
-            balance = await self.get_balance(user_id)
-            balance.amount += amount
-            await db.commit()
-
-    async def decrease_balance(self, user_id: int):
-        async with AsyncSession(self.engine) as db:
-            balance = await self.get_balance(user_id)
-            balance.amount -= 1
-            await db.commit()
-            return True
-
-    async def get_balance(self, user_id: int):
-        async with AsyncSession(self.engine) as db:
-            user = await self.get_user(user_id)
+    async def get_balance(self, db: AsyncSession = None, user_id: int = None):
+        close_db = False
+        if db is None:
+            db = self.session()
+            close_db = True
+        try:
+            user = await self.get_user(db, user_id)
+            if user is None:
+                return None
             balance = await db.scalar(
                 select(Balance).where(Balance.id == user.balance_id)
             )
             return balance
+        finally:
+            if close_db:
+                await db.close()
+
+    async def increase_balance(self, user_id: int, amount: int):
+        async with self.session() as db:
+            balance = await self.get_balance(db, user_id)
+            balance.amount += amount
+            await db.flush()
+            await db.commit()
+
+    async def decrease_balance(self, user_id: int):
+        async with self.session() as db:
+            balance = await self.get_balance(db, user_id)
+            balance.amount -= 1
+            await db.flush()
+            await db.commit()
+            return True
 
     async def get_balance_by_uniq_code(self, uniq_code: int):
-        async with AsyncSession(self.engine) as db:
+        async with self.session() as db:
             try:
                 balance = await db.scalar(
                     select(Balance).where(Balance.uniq_code == uniq_code)
@@ -110,23 +126,25 @@ class Database:
                 return False
 
     async def link_user_to_balance(self, user_id: int, balance_id: int):
-        async with AsyncSession(self.engine) as db:
-            user = await self.get_user(user_id)
+        async with self.session() as db:
+            user = await self.get_user(db, user_id)
             user.balance_id = balance_id
+            await db.flush()
             await db.commit()
 
     async def create_uniq_code(self, user_id: int):
-        async with AsyncSession(self.engine) as db:
+        async with self.session() as db:
             uniq_code = random.choices(
                 population=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], k=4
             )
-            balance = await self.get_balance(user_id)
+            balance = await self.get_balance(db, user_id)
             if not balance.uniq_code:
                 balance.uniq_code = "".join(uniq_code)
+                await db.flush()
                 await db.commit()
             return True
 
     async def get_uniq_code(self, user_id: int):
-        async with AsyncSession(self.engine) as db:
-            balance = await self.get_balance(user_id)
+        async with self.session() as db:
+            balance = await self.get_balance(db, user_id)
             return balance.uniq_code
