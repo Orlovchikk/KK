@@ -4,8 +4,12 @@ from os.path import dirname, join
 
 from dotenv import load_dotenv
 from sqlalchemy import Column, ForeignKey, Integer, String, exc, select
-from sqlalchemy.ext.asyncio import (AsyncAttrs, AsyncSession,
-                                    async_sessionmaker, create_async_engine)
+from sqlalchemy.ext.asyncio import (
+    AsyncAttrs,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 dotenv_path = join(dirname(__file__), ".env")

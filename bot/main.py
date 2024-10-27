@@ -257,6 +257,7 @@ async def users_callback_handler(callback_query: CallbackQuery):
 
 
 def register_handlers(dp: Dispatcher):
+    dp.message.register(command_start_handler, CommandStart())
     dp.callback_query.register(
         tokens_callback_handler,
         lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens"],
