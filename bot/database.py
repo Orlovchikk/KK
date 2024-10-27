@@ -32,6 +32,7 @@ class User(Base):
 
     id = Column(String, primary_key=True)
     balance_id = Column(Integer, ForeignKey("balances.id"))
+    username = Column(String)
 
 
 class Balance(Base):
@@ -56,10 +57,10 @@ class Database:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    async def create_user(self, user_id: int):
+    async def create_user(self, user_id: int, username: str):
         async with self.session() as db:
             try:
-                new_user = User(id=str(user_id))
+                new_user = User(id=str(user_id), username=username)
                 db.add(new_user)
                 await db.flush()
 
@@ -152,3 +153,8 @@ class Database:
         async with self.session() as db:
             balance = await self.get_balance(db, user_id)
             return balance.uniq_code
+
+    async def get_users_by_balance(self, balance_id: int):
+        async with self.session() as db:
+            users = await db.execute(select(User).where(User.balance_id == balance_id))
+            return users.scalars().all()

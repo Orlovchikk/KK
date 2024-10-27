@@ -32,10 +32,10 @@ db = Database()
 
 # Command '/start'
 async def command_start_handler(message: Message):
-    await db.create_user(message.from_user.id)
+    await db.create_user(message.from_user.id, username=message.from_user.username)
     await message.answer(f"Привет, {message.from_user.first_name}! 👋")
     await message.answer(
-        "Я — LinkLens, ваш умный помощник HR, который поможет создать профиль человека на основе его активности в социальных сетях. Используя передовые технологии искусственного интеллекта, я анализирую данные, чтобы предоставить вам полезную информацию."
+        "Я — LinkLens, ваш умный помощник HR, который поможет создать профиль человека на основе его активности в социальных сетях. Используя передовые технологии искусственного интеллекта, я анализирую данные, чтобы предоставить вам полезную информацию.\n"
     )
     await message.answer(
         "Чтобы проверить профиль, просто отправьте ссылку на VK. 🚀",
@@ -49,6 +49,12 @@ async def command_start_handler(message: Message):
                     KeyboardButton(text="Прислать секретный код 🙈"),
                     KeyboardButton(text="Мой секретный код"),
                 ],
+                [
+                    KeyboardButton(text="Анализ 🔎"),
+                ],
+                [
+                    KeyboardButton(text="Привязанные пользователи 👤"),
+                ],
             ],
             resize_keyboard=True,
         ),
@@ -58,8 +64,7 @@ async def command_start_handler(message: Message):
 @dp.message(Command("help"))
 async def command_help(message: Message):
     await message.answer(
-        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль\n/balance - вывести текущий баланс\nget_code - получить секретный код\n\
-            /send_code - отправить код"
+        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль\n/balance - вывести текущий баланс\nget_code - получить секретный код\n\/send_code - отправить код"
     )
 
 
@@ -206,7 +211,7 @@ class Analyze_Form(StatesGroup):
     link = State()
 
 
-@dp.message(Command("analyze"))
+@dp.message(or_f(Command("analyze"), F.text == "Анализ 🔎"))
 async def anaylyze_handler(message: Message, state: FSMContext):
     await state.set_state(Analyze_Form.link)
     await message.answer("Пришлите ссылку на профиль VK. 🔗")
@@ -233,27 +238,58 @@ async def cancel_handler(message: Message, state: FSMContext):
     await message.answer("Отправление ссылки отменено")
 
 
-@dp.message(Command("users"))
-async def users_handler(message: Message, state: FSMContext):
+@dp.message(or_f(Command("users"), F.text == "Привязанные пользователи 👤"))
+async def users_handler(message: Message):
+    user_id = message.from_user.id
+
+    balance = await db.get_balance(user_id=user_id)
+    if not balance:
+        await message.answer("Баланс не найден.")
+        return
+
+    users = await db.get_users_by_balance(balance_id=balance.id)
+    users = [user for user in users if user.id != str(user_id)]
+
+    if not users:
+        await message.answer("Нет других пользователей, привязанных к вашему балансу.")
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{user.id}",
+                    callback_data=f"delete_{user.id}",
+                )
+            ]
+            for user in users
+        ]
+    )
+
     await message.answer(
         "Вот список пользователей, которые подключены к вашему балансу\nНажмите на пользователя, которого хотите удалить со своего аккаунта",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="orlovchik - потратил 3 токена",
-                        callback_data="delete_orlovchik",
-                    )
-                ]
-            ]
-        ),
+        reply_markup=keyboard,
     )
 
 
 async def users_callback_handler(callback_query: CallbackQuery):
-    await callback_query.message.answer(
-        "Пользователей orlovchik удален с вашего баланса"
-    )
+    user_id_to_delete = callback_query.data[len("delete_") :]
+
+    user_to_delete = await db.get_user(user_id=user_id_to_delete)
+
+    balance = await db.get_balance(user_id=callback_query.from_user.id)
+    if not balance:
+        await callback_query.message.answer("Баланс не найден.")
+        return
+
+    if balance.owner_id == str(callback_query.from_user.id):
+        await callback_query.message.answer(
+            f"Пользователь {user_id_to_delete} удален с вашего баланса."
+        )
+    else:
+        await callback_query.message.answer(
+            "Вы не можете удалять пользователей, привязанных к чужому балансу."
+        )
 
 
 def register_handlers(dp: Dispatcher):
