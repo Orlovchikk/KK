@@ -13,7 +13,7 @@ requests = "^2.32.3"
 
 
 [tool.poetry.group.dev.dependencies]
-uvicorn = "^0.32.0"
+isort = "^5.13.2"
 
 [build-system]
 requires = ["poetry-core"]

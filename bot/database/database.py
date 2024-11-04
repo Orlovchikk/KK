@@ -3,14 +3,13 @@ import random
 from os.path import dirname, join
 
 from dotenv import load_dotenv
-from sqlalchemy import Column, ForeignKey, Integer, String, exc, select
+from sqlalchemy import exc, select
 from sqlalchemy.ext.asyncio import (
-    AsyncAttrs,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, relationship
+from .models import Base, User, Balance
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -21,28 +20,6 @@ PGUSER = os.getenv("PGUSER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 PORT = os.getenv("PORT")
 url = f"postgresql+asyncpg://{PGUSER}:{POSTGRES_PASSWORD}@{HOST}:{PORT}/{POSTGRES_DB}"
-
-
-class Base(AsyncAttrs, DeclarativeBase):
-    pass
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(String, primary_key=True)
-    balance_id = Column(Integer, ForeignKey("balances.id"))
-    username = Column(String)
-
-
-class Balance(Base):
-    __tablename__ = "balances"
-
-    id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
-    amount = Column(Integer, nullable=False)
-    uniq_code = Column(String, nullable=True)
-    users = relationship("User", backref="balance", foreign_keys=[User.balance_id])
 
 
 class Database:
@@ -158,3 +135,17 @@ class Database:
         async with self.session() as db:
             users = await db.execute(select(User).where(User.balance_id == balance_id))
             return users.scalars().all()
+        
+    async def unlink_user_from_balance(self, user: User):
+        async with self.session() as db:
+            try:    
+                user = await self.get_user(db, user_id=user.id)
+                user_balance = await db.scalar(
+                    select(Balance).where(Balance.owner_id == user.id)
+                )
+                user.balance = user_balance
+                await db.commit()
+            except Exception as e:
+                print(e)
+                await db.rollback()
+        

@@ -7,17 +7,13 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    Message,
-    ReplyKeyboardMarkup,
-)
-from database import Database
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup, KeyboardButton, Message,
+                           ReplyKeyboardMarkup)
 from dotenv import load_dotenv
 from model import analyze_profile
+
+from database.database import Database
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -64,7 +60,7 @@ async def command_start_handler(message: Message):
 @dp.message(Command("help"))
 async def command_help(message: Message):
     await message.answer(
-        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль\n/balance - вывести текущий баланс\nget_code - получить секретный код\n\/send_code - отправить код"
+        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль\n/balance - вывести текущий баланс\nget_code - получить секретный код\n/send_code - отправить код"
     )
 
 
@@ -172,7 +168,7 @@ async def command_balance(message: Message):
 
 
 # vk profile link handler
-@dp.message(F.text.regexp("https://vk\.com/[A-Za-z0-9]+"))
+@dp.message(F.text.regexp(r"https://vk\.com/[A-Za-z0-9]+"))
 async def vk_profile_link_hanldler(message: Message):
     text = message.text
     user = message.from_user
@@ -274,18 +270,19 @@ async def users_handler(message: Message):
 
 async def users_callback_handler(callback_query: CallbackQuery):
     user_id_to_delete = callback_query.data[len("delete_") :]
-
     user_to_delete = await db.get_user(user_id=user_id_to_delete)
-
     balance = await db.get_balance(user_id=callback_query.from_user.id)
-    if not balance:
-        await callback_query.message.answer("Баланс не найден.")
-        return
 
     if balance.owner_id == str(callback_query.from_user.id):
-        await callback_query.message.answer(
+        try:
+            await db.unlink_user_from_balance(user_to_delete)
+            await callback_query.message.answer(
             f"Пользователь {user_id_to_delete} удален с вашего баланса."
-        )
+            )
+        except Exception as e:
+            print(e)
+            await callback_query.message.answer('Произошла ошибка при удалении пользователя')
+
     else:
         await callback_query.message.answer(
             "Вы не можете удалять пользователей, привязанных к чужому балансу."
