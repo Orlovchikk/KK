@@ -28,7 +28,7 @@ db = Database()
 
 # Command '/start'
 async def command_start_handler(message: Message):
-    await db.create_user(message.from_user.id, username=message.from_user.username)
+    await db.create_user(message.from_user.id, username=message.from_user.username, full_name=message.from_user.full_name)
     await message.answer(f"Привет, {message.from_user.first_name}! 👋")
     await message.answer(
         "Я — LinkLens, ваш умный помощник HR, который поможет создать профиль человека на основе его активности в социальных сетях. Используя передовые технологии искусственного интеллекта, я анализирую данные, чтобы предоставить вам полезную информацию.\n"
@@ -254,7 +254,7 @@ async def users_handler(message: Message):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"{user.id}",
+                    text=f"@{user.username} - {user.full_name}" if user.username else f'{user.full_name}',
                     callback_data=f"delete_{user.id}",
                 )
             ]

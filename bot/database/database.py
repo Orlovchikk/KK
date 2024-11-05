@@ -34,10 +34,10 @@ class Database:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    async def create_user(self, user_id: int, username: str):
+    async def create_user(self, user_id: int, username: str, full_name: str):
         async with self.session() as db:
             try:
-                new_user = User(id=str(user_id), username=username)
+                new_user = User(id=str(user_id), username=username, full_name=full_name)
                 db.add(new_user)
                 await db.flush()
 

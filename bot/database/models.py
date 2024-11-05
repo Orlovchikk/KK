@@ -13,6 +13,7 @@ class User(Base):
     id = Column(String, primary_key=True)
     balance_id = Column(Integer, ForeignKey("balances.id"))
     username = Column(String)
+    full_name = Column(String)
 
 
 class Balance(Base):
