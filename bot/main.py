@@ -39,15 +39,16 @@ async def command_start_handler(message: Message):
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[
                 [
+                    KeyboardButton(text="Анализ 🔎"),
+                ],
+                [
                     KeyboardButton(text="Купить токены 💸"),
                     KeyboardButton(text="Баланс 💰"),
+                    KeyboardButton(text='Оформить подписку ✅')
                 ],
                 [
                     KeyboardButton(text="Прислать секретный код 🙈"),
                     KeyboardButton(text="Мой секретный код"),
-                ],
-                [
-                    KeyboardButton(text="Анализ 🔎"),
                 ],
                 [
                     KeyboardButton(text="Привязанные пользователи 👤"),
@@ -111,6 +112,8 @@ async def command_tokens_handler(message: Message):
                         InlineKeyboardButton(
                             text="10 токенов", callback_data="10_tokens"
                         ),
+                    ],
+                    [
                         InlineKeyboardButton(
                             text="50 токенов", callback_data="50_tokens"
                         )
@@ -119,10 +122,60 @@ async def command_tokens_handler(message: Message):
                         InlineKeyboardButton(
                             text="100 токенов", callback_data="100_tokens"
                         ),
+                    ],
+                    [
                         InlineKeyboardButton(
                             text="1000 токенов", callback_data="1000_tokens"
                         )
                     ],
+                ]
+            ),
+        )
+    else:
+        await message.answer(
+            "Только создатель секретного кода имеет право покупать токены. 🔐"
+        )
+
+
+async def tokens_callback_handler(callback_query: CallbackQuery):
+    callback_data = {
+        "10_tokens": 10,
+        "50_tokens": 50,
+        "100_tokens": 100,
+        "1000_tokens": 1000,
+        '1_month': (1, 'm'),
+        '3_month': (3, 'm'),
+        '1_year': (1, 'y')
+    }
+
+    amount = callback_data.get(callback_query.data)
+    if type(amount) is int:
+        await update_balance_and_notify(callback_query, amount)
+    else:
+        await subscribe_and_notify(callback_query, amount[0], amount[1])
+
+
+# Callback for buttons '{}_tokens" in command '/tokens'
+async def update_balance_and_notify(callback_query: CallbackQuery, amount: int):
+    await db.increase_balance(callback_query.from_user.id, amount)
+
+    await callback_query.message.answer(
+        f"Баланс успешно пополнен на {amount} токенов! 🎉"
+    )
+    await callback_query.message.answer(
+        f"Теперь вы можете использовать их, воспользовавшись командой /analyze, или просто отправьте ссылку на профиль VK. 🔍"
+    )
+
+
+# Command /sub
+@dp.message(or_f(Command("sub"), F.text == "Оформить подписку ✅"))
+async def command_sub_handler(message: Message):
+    balance = await db.get_balance(user_id=message.from_user.id)
+    if balance.owner_id == str(message.from_user.id):
+        await message.answer(
+            "Выберите подписку, которую вы хотите приобрести.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
                     [
                         InlineKeyboardButton(
                             text="Подписка 1 месяц", callback_data="1_month"
@@ -143,20 +196,20 @@ async def command_tokens_handler(message: Message):
         )
     else:
         await message.answer(
-            "Только создатель секретного кода имеет право покупать токены. 🔐"
+            "Только создатель секретного кода имеет право покупать подписку. 🔐"
         )
 
 
-# Callback for buttons '{}_tokens" in command '/tokens'
-async def update_balance_and_notify(callback_query: CallbackQuery, amount: int):
-    await db.increase_balance(callback_query.from_user.id, amount)
+async def sub_callback_handler(callback_query: CallbackQuery):
+    callback_data = {
+        '1_month': (1, 'm'),
+        '3_month': (3, 'm'),
+        '1_year': (1, 'y')
+    }
 
-    await callback_query.message.answer(
-        f"Баланс успешно пополнен на {amount} токенов! 🎉"
-    )
-    await callback_query.message.answer(
-        f"Теперь вы можете использовать их, воспользовавшись командой /analyze, или просто отправьте ссылку на профиль VK. 🔍"
-    )
+    amount = callback_data.get(callback_query.data)
+    await subscribe_and_notify(callback_query, amount[0], amount[1])
+
 
 async def subscribe_and_notify(callback_query: CallbackQuery, amount: int, unit: str):
     balance = await db.get_balance(user_id=callback_query.from_user.id)
@@ -167,24 +220,6 @@ async def subscribe_and_notify(callback_query: CallbackQuery, amount: int, unit:
     else:
         await db.subscribe(callback_query.from_user.id, amount, unit)
         await callback_query.message.answer(f'Вы успешно подписаны! Попробуйте отправить ссылку на профиль VK, или нажмите на кнопку "Анализ 🔎"')
-
-
-async def tokens_callback_handler(callback_query: CallbackQuery):
-    callback_data = {
-        "10_tokens": 10,
-        "50_tokens": 50,
-        "100_tokens": 100,
-        "1000_tokens": 1000,
-        '1_month': (1, 'm'),
-        '3_month': (3, 'm'),
-        '1_year': (1, 'y')
-    }
-
-    amount = callback_data.get(callback_query.data)
-    if type(amount) is int:
-        await update_balance_and_notify(callback_query, amount)
-    else:
-        await subscribe_and_notify(callback_query, amount[0], amount[1])
 
 
 # Command '/balance'
@@ -325,7 +360,10 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(command_start_handler, CommandStart())
     dp.callback_query.register(
         tokens_callback_handler,
-        lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens", "1_month", "3_month", "1_year"],
+        lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens"],
+    )
+    dp.callback_query.register(
+        sub_callback_handler, lambda c: c.data in [ "1_month", "3_month", "1_year"]
     )
     dp.callback_query.register(
         users_callback_handler, lambda c: c.data.startswith("delete_")
