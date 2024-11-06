@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import date
 from os.path import dirname, join
 
 import requests
@@ -10,10 +11,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, KeyboardButton, Message,
                            ReplyKeyboardMarkup)
+from database.database import Database
 from dotenv import load_dotenv
 from model import analyze_profile
-
-from database.database import Database
+from utils import translate_month_in_str
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -109,9 +110,7 @@ async def command_tokens_handler(message: Message):
                     [
                         InlineKeyboardButton(
                             text="10 токенов", callback_data="10_tokens"
-                        )
-                    ],
-                    [
+                        ),
                         InlineKeyboardButton(
                             text="50 токенов", callback_data="50_tokens"
                         )
@@ -119,11 +118,24 @@ async def command_tokens_handler(message: Message):
                     [
                         InlineKeyboardButton(
                             text="100 токенов", callback_data="100_tokens"
+                        ),
+                        InlineKeyboardButton(
+                            text="1000 токенов", callback_data="1000_tokens"
                         )
                     ],
                     [
                         InlineKeyboardButton(
-                            text="1000 токенов", callback_data="1000_tokens"
+                            text="Подписка 1 месяц", callback_data="1_month"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="Подписка 3 месяца", callback_data="3_month"
+                        )
+                    ], 
+                    [
+                        InlineKeyboardButton(
+                            text="Подписка 1 год", callback_data="1_year"
                         )
                     ],
                 ]
@@ -146,25 +158,45 @@ async def update_balance_and_notify(callback_query: CallbackQuery, amount: int):
         f"Теперь вы можете использовать их, воспользовавшись командой /analyze, или просто отправьте ссылку на профиль VK. 🔍"
     )
 
+async def subscribe_and_notify(callback_query: CallbackQuery, amount: int, unit: str):
+    balance = await db.get_balance(user_id=callback_query.from_user.id)
+    subscription_date = balance.subscription_end
+    if subscription_date and subscription_date >= date.today():
+        date_formatted = translate_month_in_str(subscription_date)
+        await callback_query.message.answer(f'У вас уже есть подписка. Она действует до {date_formatted}')
+    else:
+        await db.subscribe(callback_query.from_user.id, amount, unit)
+        await callback_query.message.answer(f'Вы успешно подписаны! Попробуйте отправить ссылку на профиль VK, или нажмите на кнопку "Анализ 🔎"')
+
 
 async def tokens_callback_handler(callback_query: CallbackQuery):
-    token_amounts = {
+    callback_data = {
         "10_tokens": 10,
         "50_tokens": 50,
         "100_tokens": 100,
         "1000_tokens": 1000,
+        '1_month': (1, 'm'),
+        '3_month': (3, 'm'),
+        '1_year': (1, 'y')
     }
 
-    amount = token_amounts.get(callback_query.data)
-    if amount:
+    amount = callback_data.get(callback_query.data)
+    if type(amount) is int:
         await update_balance_and_notify(callback_query, amount)
+    else:
+        await subscribe_and_notify(callback_query, amount[0], amount[1])
 
 
 # Command '/balance'
 @dp.message(or_f(Command("balance"), F.text == "Баланс 💰"))
 async def command_balance(message: Message):
     user_balance = await db.get_balance(user_id=message.from_user.id)
-    await message.answer(f"Ваш текущий баланс: {user_balance.amount} токенов.")
+    subscription_date = user_balance.subscription_end
+    if subscription_date >= date.today():
+        date_formatted = translate_month_in_str(subscription_date)
+        await message.answer(f'У вас действует подписка до {date_formatted}')
+    else:
+        await message.answer(f"Ваш текущий баланс: {user_balance.amount} токенов.")
 
 
 # vk profile link handler
@@ -173,7 +205,7 @@ async def vk_profile_link_hanldler(message: Message):
     text = message.text
     user = message.from_user
     balance = await db.get_balance(user_id=user.id)
-    if balance.amount > 0:
+    if balance.amount > 0 or balance.subscription_end >= date.today():
         try:
             await message.answer(
                 "Обрабатываем профиль, пожалуйста, подождите немного... ⏳"
@@ -293,7 +325,7 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(command_start_handler, CommandStart())
     dp.callback_query.register(
         tokens_callback_handler,
-        lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens"],
+        lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens", "1_month", "3_month", "1_year"],
     )
     dp.callback_query.register(
         users_callback_handler, lambda c: c.data.startswith("delete_")

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Column, Date, ForeignKey, Integer, String
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -23,4 +23,5 @@ class Balance(Base):
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
     amount = Column(Integer, nullable=False)
     uniq_code = Column(String, nullable=True)
+    subscription_end = Column(Date, nullable=True)
     users = relationship("User", backref="balance", foreign_keys=[User.balance_id])

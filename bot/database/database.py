@@ -1,15 +1,14 @@
 import os
 import random
+from datetime import date
 from os.path import dirname, join
 
 from dotenv import load_dotenv
 from sqlalchemy import exc, select
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from .models import Base, User, Balance
+from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
+                                    create_async_engine)
+
+from .models import Balance, Base, User
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -148,4 +147,18 @@ class Database:
             except Exception as e:
                 print(e)
                 await db.rollback()
-        
+    
+    async def subscribe(self, id: str, amount: int, unit: str):
+        async with self.session() as db:
+            try:
+                balance = await self.get_balance(db, id)
+                today = date.today()
+                if unit == 'y':
+                    balance.subscription_end = today.replace(year=today.year + amount)
+                elif unit == 'm':
+                    balance.subscription_end = today.replace(month=today.month + amount)
+
+                await db.commit()
+            except Exception as e:
+                print(e)
+                await db.rollback()
