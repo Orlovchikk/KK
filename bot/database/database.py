@@ -5,8 +5,7 @@ from os.path import dirname, join
 
 from dotenv import load_dotenv
 from sqlalchemy import exc, select
-from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
-                                    create_async_engine)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .models import Balance, Base, User
 
@@ -33,24 +32,33 @@ class Database:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    async def create_user(self, user_id: int, username: str, full_name: str):
+    async def create_user(self, user_id: int, username: str, full_name: str, plan: str):
         async with self.session() as db:
             try:
-                new_user = User(id=str(user_id), username=username, full_name=full_name)
-                db.add(new_user)
-                await db.flush()
+                existing_user = await db.scalar(select(User).where(User.id == user_id))
 
-                new_balance = Balance(owner_id=str(user_id), amount=0)
-                db.add(new_balance)
-                await db.flush()
+                if existing_user:
+                    existing_user.plan = plan
+                else:
+                    new_user = User(
+                        id=user_id, username=username, full_name=full_name, plan=plan
+                    )
+                    db.add(new_user)
+                    await db.flush()
 
-                new_user.balance_id = new_balance.id
-                await db.flush()
+                    new_balance = Balance(owner_id=user_id, amount=0)
+                    db.add(new_balance)
+                    await db.flush()
+
+                    new_user.balance_id = new_balance.id
+
                 await db.commit()
-                return False
-            except exc.IntegrityError:
-                await db.rollback()
                 return True
+
+            except Exception as e:
+                print(e)
+                await db.rollback()
+                return False
 
     async def get_user(self, db: AsyncSession = None, user_id: int = None):
         close_db = False
@@ -58,8 +66,11 @@ class Database:
             db = self.session()
             close_db = True
         try:
-            user = await db.scalar(select(User).where(User.id == str(user_id)))
+            user = await db.scalar(select(User).where(User.id == user_id))
             return user
+        except Exception as e:
+            print(e)
+            return False
         finally:
             if close_db:
                 await db.close()
@@ -134,10 +145,10 @@ class Database:
         async with self.session() as db:
             users = await db.execute(select(User).where(User.balance_id == balance_id))
             return users.scalars().all()
-        
+
     async def unlink_user_from_balance(self, user: User):
         async with self.session() as db:
-            try:    
+            try:
                 user = await self.get_user(db, user_id=user.id)
                 user_balance = await db.scalar(
                     select(Balance).where(Balance.owner_id == user.id)
@@ -147,15 +158,15 @@ class Database:
             except Exception as e:
                 print(e)
                 await db.rollback()
-    
-    async def subscribe(self, id: str, amount: int, unit: str):
+
+    async def subscribe(self, user_id: str, amount: int, unit: str):
         async with self.session() as db:
             try:
-                balance = await self.get_balance(db, id)
+                balance = await self.get_balance(db, user_id)
                 today = date.today()
-                if unit == 'y':
+                if unit == "y":
                     balance.subscription_end = today.replace(year=today.year + amount)
-                elif unit == 'm':
+                elif unit == "m":
                     balance.subscription_end = today.replace(month=today.month + amount)
 
                 await db.commit()

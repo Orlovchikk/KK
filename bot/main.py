@@ -8,13 +8,13 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup, KeyboardButton, Message,
-                           ReplyKeyboardMarkup)
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from database.database import Database
 from dotenv import load_dotenv
 from model import analyze_profile
-from utils import translate_month_in_str
+
+import utils.keyboards as keyboards
+from utils.utils import translate_month_in_str
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -27,42 +27,59 @@ dp = Dispatcher()
 db = Database()
 
 
+class Start_Form(StatesGroup):
+    choice = State()
+
+
 # Command '/start'
-async def command_start_handler(message: Message):
-    await db.create_user(message.from_user.id, username=message.from_user.username, full_name=message.from_user.full_name)
+async def command_start_handler(message: Message, state: FSMContext):
+    await state.set_state(Start_Form.choice)
     await message.answer(f"Привет, {message.from_user.first_name}! 👋")
     await message.answer(
         "Я — LinkLens, ваш умный помощник HR, который поможет создать профиль человека на основе его активности в социальных сетях. Используя передовые технологии искусственного интеллекта, я анализирую данные, чтобы предоставить вам полезную информацию.\n"
     )
-    await message.answer(
-        "Чтобы проверить профиль, просто отправьте ссылку на VK. 🚀",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [
-                    KeyboardButton(text="Анализ 🔎"),
-                ],
-                [
-                    KeyboardButton(text="Купить токены 💸"),
-                    KeyboardButton(text="Баланс 💰"),
-                    KeyboardButton(text='Оформить подписку ✅')
-                ],
-                [
-                    KeyboardButton(text="Прислать секретный код 🙈"),
-                    KeyboardButton(text="Мой секретный код"),
-                ],
-                [
-                    KeyboardButton(text="Привязанные пользователи 👤"),
-                ],
-            ],
-            resize_keyboard=True,
-        ),
-    )
+    await message.answer("Выберите план", reply_markup=keyboards.choose_plan)
+
+
+@dp.message(Start_Form.choice)
+async def choice_handler(message: Message, state: FSMContext):
+    await state.clear()
+    if message.text == "Персональный":
+        await db.create_user(
+            message.from_user.id,
+            username=message.from_user.username,
+            full_name=message.from_user.full_name,
+            plan="person",
+        )
+        await message.answer(
+            "Вы выбрали план Персональный.", reply_markup=keyboards.person
+        )
+        await message.answer(
+            "Купите токены для использования бота.",
+            reply_markup=keyboards.choose_tokens,
+        )
+    elif message.text == "Корпоративный":
+        await db.create_user(
+            message.from_user.id,
+            username=message.from_user.username,
+            full_name=message.from_user.full_name,
+            plan="corporation",
+        )
+        await message.answer(
+            "Вы выбрали план Корпоративный.", reply_markup=keyboards.corporation
+        )
+        await message.answer(
+            "Купите подписку для использования бота.",
+            reply_markup=keyboards.subs,
+        )
+    else:
+        await state.set_state(Start_Form.choice)
 
 
 @dp.message(Command("help"))
 async def command_help(message: Message):
     await message.answer(
-        "Список всех комманд: /start - перезагрузить бота\n/help - вывести все команды\n/analyze - обработать профиль\n/balance - вывести текущий баланс\nget_code - получить секретный код\n/send_code - отправить код"
+        "Список всех комманд: /start - Перезагрузить бота\n/analyze - Обработать профиль\n/balance - Вывести текущий баланс\n/tokens - Купить токены\n/sub - Оформить подписку\nget_code - Получить секретный код\n/send_code - Отправить код\n/help - Вывести все команды"
     )
 
 
@@ -73,8 +90,12 @@ class Form(StatesGroup):
 # Command '/send_code'
 @dp.message(or_f(Command("send_code"), F.text == "Прислать секретный код 🙈"))
 async def command_send_code(message: Message, state: FSMContext):
-    await state.set_state(Form.code)
-    await message.answer("Введите код")
+    user = await db.get_user(user_id=message.from_user.id)
+    if user.plan == "corporation":
+        await state.set_state(Form.code)
+        await message.answer("Введите код")
+    else:
+        await message.answer("На вашем плане эта функция не доступна")
 
 
 @dp.message(Form.code)
@@ -93,48 +114,27 @@ async def process_code(message: Message, state: FSMContext):
 # Command '/get_code'
 @dp.message(or_f(Command("get_code"), F.text == "Мой секретный код"))
 async def command_create_code(message: Message):
-    user = message.from_user
-    await db.create_uniq_code(user.id)
-    uniq_code = await db.get_uniq_code(user.id)
-    await message.answer(f"Твой секретный код: {uniq_code}")
+    user = await db.get_user(user_id=message.from_user.id)
+    if user.plan == "corporation":
+        user = message.from_user
+        await db.create_uniq_code(user.id)
+        uniq_code = await db.get_uniq_code(user.id)
+        await message.answer(f"Твой секретный код: {uniq_code}")
+    else:
+        await message.answer("На вашем плане эта функция не доступна")
 
 
 # Command '/tokens'
 @dp.message(or_f(Command("tokens"), F.text == "Купить токены 💸"))
 async def command_tokens_handler(message: Message):
-    balance = await db.get_balance(user_id=message.from_user.id)
-    if balance.owner_id == str(message.from_user.id):
+    user = await db.get_user(user_id=message.from_user.id)
+    if user.plan == "person":
         await message.answer(
             "Выберите количество токенов, которое вы хотите приобрести.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="10 токенов", callback_data="10_tokens"
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="50 токенов", callback_data="50_tokens"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="100 токенов", callback_data="100_tokens"
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="1000 токенов", callback_data="1000_tokens"
-                        )
-                    ],
-                ]
-            ),
+            reply_markup=keyboards.choose_tokens,
         )
     else:
-        await message.answer(
-            "Только создатель секретного кода имеет право покупать токены. 🔐"
-        )
+        await message.answer("На вашем плане эта функция не доступна")
 
 
 async def tokens_callback_handler(callback_query: CallbackQuery):
@@ -143,16 +143,10 @@ async def tokens_callback_handler(callback_query: CallbackQuery):
         "50_tokens": 50,
         "100_tokens": 100,
         "1000_tokens": 1000,
-        '1_month': (1, 'm'),
-        '3_month': (3, 'm'),
-        '1_year': (1, 'y')
     }
 
     amount = callback_data.get(callback_query.data)
-    if type(amount) is int:
-        await update_balance_and_notify(callback_query, amount)
-    else:
-        await subscribe_and_notify(callback_query, amount[0], amount[1])
+    await update_balance_and_notify(callback_query, amount)
 
 
 # Callback for buttons '{}_tokens" in command '/tokens'
@@ -170,42 +164,24 @@ async def update_balance_and_notify(callback_query: CallbackQuery, amount: int):
 # Command /sub
 @dp.message(or_f(Command("sub"), F.text == "Оформить подписку ✅"))
 async def command_sub_handler(message: Message):
-    balance = await db.get_balance(user_id=message.from_user.id)
-    if balance.owner_id == str(message.from_user.id):
-        await message.answer(
-            "Выберите подписку, которую вы хотите приобрести.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="Подписка 1 месяц", callback_data="1_month"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="Подписка 3 месяца", callback_data="3_month"
-                        )
-                    ], 
-                    [
-                        InlineKeyboardButton(
-                            text="Подписка 1 год", callback_data="1_year"
-                        )
-                    ],
-                ]
-            ),
-        )
+    user = await db.get_user(user_id=message.from_user.id)
+    if user.plan == "corporation":
+        balance = await db.get_balance(user_id=message.from_user.id)
+        if balance.owner_id == message.from_user.id:
+            await message.answer(
+                "Выберите подписку, которую вы хотите приобрести.",
+                reply_markup=keyboards.subs,
+            )
+        else:
+            await message.answer(
+                "Только создатель секретного кода имеет право покупать подписку. 🔐"
+            )
     else:
-        await message.answer(
-            "Только создатель секретного кода имеет право покупать подписку. 🔐"
-        )
+        await message.answer("На вашем плане эта функция не доступна")
 
 
 async def sub_callback_handler(callback_query: CallbackQuery):
-    callback_data = {
-        '1_month': (1, 'm'),
-        '3_month': (3, 'm'),
-        '1_year': (1, 'y')
-    }
+    callback_data = {"1_month": (1, "m"), "3_month": (3, "m"), "1_year": (1, "y")}
 
     amount = callback_data.get(callback_query.data)
     await subscribe_and_notify(callback_query, amount[0], amount[1])
@@ -216,20 +192,26 @@ async def subscribe_and_notify(callback_query: CallbackQuery, amount: int, unit:
     subscription_date = balance.subscription_end
     if subscription_date and subscription_date >= date.today():
         date_formatted = translate_month_in_str(subscription_date)
-        await callback_query.message.answer(f'У вас уже есть подписка. Она действует до {date_formatted}')
+        await callback_query.message.answer(
+            f"У вас уже есть подписка. Она действует до {date_formatted}"
+        )
     else:
         await db.subscribe(callback_query.from_user.id, amount, unit)
-        await callback_query.message.answer(f'Вы успешно подписаны! Попробуйте отправить ссылку на профиль VK, или нажмите на кнопку "Анализ 🔎"')
+        await callback_query.message.answer(
+            f'Вы успешно подписаны! Попробуйте отправить ссылку на профиль VK, или нажмите на кнопку "Анализ 🔎"'
+        )
 
 
 # Command '/balance'
-@dp.message(or_f(Command("balance"), F.text == "Баланс 💰"))
+@dp.message(
+    or_f(Command("balance"), F.text == "Баланс 💰", F.text == "Проверить подписку 💰")
+)
 async def command_balance(message: Message):
     user_balance = await db.get_balance(user_id=message.from_user.id)
     subscription_date = user_balance.subscription_end
-    if subscription_date >= date.today():
+    if subscription_date and subscription_date >= date.today():
         date_formatted = translate_month_in_str(subscription_date)
-        await message.answer(f'У вас действует подписка до {date_formatted}')
+        await message.answer(f"У вас действует подписка до {date_formatted}")
     else:
         await message.answer(f"Ваш текущий баланс: {user_balance.amount} токенов.")
 
@@ -274,22 +256,6 @@ class Analyze_Form(StatesGroup):
     link = State()
 
 
-@dp.message(or_f(Command("analyze"), F.text == "Анализ 🔎"))
-async def anaylyze_handler(message: Message, state: FSMContext):
-    await state.set_state(Analyze_Form.link)
-    await message.answer("Пришлите ссылку на профиль VK. 🔗")
-
-
-async def process_link(message: Message, state: FSMContext):
-    if message.text.startswith("https://vk.com/"):
-        await state.clear()
-        await vk_profile_link_hanldler(message)
-    else:
-        await state.set_state(Analyze_Form.link)
-        message.answer("Не похоже на ссылку на профиль VK. 😟")
-        message.answer("Попробуйте еще раз, либо отправьте команду /cancel")
-
-
 @dp.message(Command("cancel"))
 async def cancel_handler(message: Message, state: FSMContext):
     current_state = await state.get_state()
@@ -301,38 +267,51 @@ async def cancel_handler(message: Message, state: FSMContext):
     await message.answer("Отправление ссылки отменено")
 
 
+@dp.message(or_f(Command("analyze"), F.text == "Анализ 🔎"))
+async def anaylyze_handler(message: Message, state: FSMContext):
+    await state.set_state(Analyze_Form.link)
+    await message.answer("Пришлите ссылку на профиль VK. 🔗")
+
+
+@dp.message(Analyze_Form.link)
+async def process_link(message: Message, state: FSMContext):
+    if message.text.startswith("https://vk.com/"):
+        await state.clear()
+        await vk_profile_link_hanldler(message)
+    else:
+        await state.set_state(Analyze_Form.link)
+        await message.answer("Не похоже на ссылку на профиль VK. 😟")
+        await message.answer("Попробуйте еще раз, либо отправьте команду /cancel")
+
+
 @dp.message(or_f(Command("users"), F.text == "Привязанные пользователи 👤"))
 async def users_handler(message: Message):
-    user_id = message.from_user.id
+    user = await db.get_user(user_id=message.from_user.id)
+    if user.plan == "corporation":
+        user_id = message.from_user.id
 
-    balance = await db.get_balance(user_id=user_id)
-    if not balance:
-        await message.answer("Баланс не найден.")
-        return
+        balance = await db.get_balance(user_id=user_id)
+        if not balance:
+            await message.answer("Баланс не найден.")
+            return
 
-    users = await db.get_users_by_balance(balance_id=balance.id)
-    users = [user for user in users if user.id != str(user_id)]
+        users = await db.get_users_by_balance(balance_id=balance.id)
+        users = [user for user in users if user.id != user_id]
 
-    if not users:
-        await message.answer("Нет других пользователей, привязанных к вашему балансу.")
-        return
+        if not users:
+            await message.answer(
+                "Нет других пользователей, привязанных к вашему балансу."
+            )
+            return
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=f"@{user.username} - {user.full_name}" if user.username else f'{user.full_name}',
-                    callback_data=f"delete_{user.id}",
-                )
-            ]
-            for user in users
-        ]
-    )
+        keyboard = await keyboards.users(users)
 
-    await message.answer(
-        "Вот список пользователей, которые подключены к вашему балансу\nНажмите на пользователя, которого хотите удалить со своего аккаунта",
-        reply_markup=keyboard,
-    )
+        await message.answer(
+            "Вот список пользователей, которые подключены к вашему балансу\nНажмите на пользователя, которого хотите удалить со своего аккаунта",
+            reply_markup=keyboard,
+        )
+    else:
+        await message.answer("На вашем плане эта функция не доступна")
 
 
 async def users_callback_handler(callback_query: CallbackQuery):
@@ -340,15 +319,17 @@ async def users_callback_handler(callback_query: CallbackQuery):
     user_to_delete = await db.get_user(user_id=user_id_to_delete)
     balance = await db.get_balance(user_id=callback_query.from_user.id)
 
-    if balance.owner_id == str(callback_query.from_user.id):
+    if balance.owner_id == callback_query.from_user.id:
         try:
             await db.unlink_user_from_balance(user_to_delete)
             await callback_query.message.answer(
-            f"Пользователь {user_id_to_delete} удален с вашего баланса."
+                f"Пользователь {user_id_to_delete} удален с вашего баланса."
             )
         except Exception as e:
             print(e)
-            await callback_query.message.answer('Произошла ошибка при удалении пользователя')
+            await callback_query.message.answer(
+                "Произошла ошибка при удалении пользователя"
+            )
 
     else:
         await callback_query.message.answer(
@@ -363,7 +344,7 @@ def register_handlers(dp: Dispatcher):
         lambda c: c.data in ["10_tokens", "50_tokens", "100_tokens", "1000_tokens"],
     )
     dp.callback_query.register(
-        sub_callback_handler, lambda c: c.data in [ "1_month", "3_month", "1_year"]
+        sub_callback_handler, lambda c: c.data in ["1_month", "3_month", "1_year"]
     )
     dp.callback_query.register(
         users_callback_handler, lambda c: c.data.startswith("delete_")

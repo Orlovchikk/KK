@@ -1,5 +1,6 @@
 from datetime import date
 
+
 def translate_month_in_str(date_unformatted: date):
     months_translation = {
             'January': 'января',
