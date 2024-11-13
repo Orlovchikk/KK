@@ -222,7 +222,9 @@ async def vk_profile_link_hanldler(message: Message):
     text = message.text
     user = message.from_user
     balance = await db.get_balance(user_id=user.id)
-    if balance.amount > 0 or balance.subscription_end >= date.today():
+    if balance.amount > 0 or (
+        balance.subscription_end and balance.subscription_end >= date.today()
+    ):
         try:
             await message.answer(
                 "Обрабатываем профиль, пожалуйста, подождите немного... ⏳"
