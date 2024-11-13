@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, Message
 from database.database import Database
 from dotenv import load_dotenv
 from model import analyze_profile
