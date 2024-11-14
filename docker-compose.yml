@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres
+    container_name: postgres-LinkLens
+    restart: always
+    env_file:
+      - ./bot/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
+
+  parser:
+    build: 
+      context: ./parser
+      dockerfile: Dockerfile
+    env_file:
+      - ./parser/.env
+    ports:
+      - "8000:8000"
+
+  bot:
+    build: 
+      context: ./bot
+      dockerfile: Dockerfile
+    ports:
+      - '8001:8000'
+    env_file:
+      - ./bot/.env
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - parser
+
+
+    
+volumes:
+  postgres_data:

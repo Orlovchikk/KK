@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/joho/godotenv"
 	"io"
 	"log"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 func loadEnv() {
