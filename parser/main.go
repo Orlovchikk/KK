@@ -20,33 +20,6 @@ func loadEnv() {
 	}
 }
 
-type Post struct {
-	Text string `json:"text"`
-	Date int64  `json:"date"`
-}
-
-type WallResponse struct {
-	Response struct {
-		Items []Post `json:"items"`
-	} `json:"response"`
-}
-
-type GroupResponse struct {
-	Response struct {
-		Count int   `json:"count"`
-		Items []int `json:"items"` // Список ID групп в виде чисел
-	} `json:"response"`
-}
-
-type GroupInfo struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type GroupInfoResponse struct {
-	Response []GroupInfo `json:"response"`
-}
-
 func getGroupNames(groupIDs []int, token string) (bool, GroupInfoResponse) {
 	ids := strings.Trim(strings.Replace(fmt.Sprint(groupIDs), " ", ",", -1), "[]")
 
@@ -74,9 +47,6 @@ func getGroupNames(groupIDs []int, token string) (bool, GroupInfoResponse) {
 		return false, GroupInfoResponse{}
 	}
 
-	//for _, group := range groupInfo.Response {
-	//	fmt.Printf("Group: %s (ID: %d)\n", group.Name, group.ID)
-	//}
 	return true, groupInfo
 }
 
@@ -101,6 +71,10 @@ func getGroups(userID, token string) (bool, GroupInfoResponse) {
 	err = json.Unmarshal(body, &groups)
 	if err != nil {
 		fmt.Println("Error parsing JSON:", err)
+		return false, GroupInfoResponse{}
+	}
+
+	if len(groups.Response.Items) < 1 {
 		return false, GroupInfoResponse{}
 	}
 
@@ -133,9 +107,9 @@ func getPosts(userID, token string) (bool, WallResponse) {
 		return false, WallResponse{}
 	}
 
-	//for i, post := range wall.Response.Items {
-	//	fmt.Printf("Post %d: %s (Date: %d)\n", i+1, post.Text, post.Date)
-	//}
+	if len(wall.Response.Items) == 0 {
+		return false, WallResponse{}
+	}
 	return true, wall
 }
 
@@ -175,12 +149,39 @@ func getUserID(username, token string) (string, error) {
 }
 
 type ResultJSON struct {
-	Success       bool            `json:"success"`
-	Posts         map[string]Post `json:"posts"`
-	Subscriptions []string        `json:"subscriptions"`
+	Success bool            `json:"success"`
+	Posts   map[string]Post `json:"posts"`
 }
 
-func finalMarshal(subscriptions GroupInfoResponse, wall WallResponse, success bool) ResultJSON {
+//type ResultJSON struct {
+//	Success       bool            `json:"success"`
+//	Posts         map[string]Post `json:"posts"`
+//	Subscriptions []string        `json:"subscriptions"`
+//}
+
+//func finalMarshal(subscriptions GroupInfoResponse, wall WallResponse, success bool) ResultJSON {
+//	posts := make(map[string]Post)
+//	for i, post := range wall.Response.Items {
+//		posts[fmt.Sprintf("post%d", i+1)] = Post{
+//			Text: post.Text,
+//			Date: post.Date,
+//		}
+//	}
+//
+//	subs := make([]string, len(subscriptions.Response))
+//
+//	for i, groupID := range subscriptions.Response {
+//		subs[i] = groupID.Name + ","
+//	}
+//	resultJSON := ResultJSON{
+//		Success:       success,
+//		Posts:         posts,
+//		Subscriptions: subs,
+//	}
+//	return resultJSON
+//}
+
+func finalMarshal(wall WallResponse, success bool) ResultJSON {
 	posts := make(map[string]Post)
 	for i, post := range wall.Response.Items {
 		posts[fmt.Sprintf("post%d", i+1)] = Post{
@@ -189,15 +190,9 @@ func finalMarshal(subscriptions GroupInfoResponse, wall WallResponse, success bo
 		}
 	}
 
-	subs := make([]string, len(subscriptions.Response))
-
-	for i, groupID := range subscriptions.Response {
-		subs[i] = groupID.Name + ","
-	}
 	resultJSON := ResultJSON{
-		Success:       success,
-		Posts:         posts,
-		Subscriptions: []string{},
+		Success: success,
+		Posts:   posts,
 	}
 	return resultJSON
 }
@@ -220,10 +215,7 @@ func parseVKLink(vkURL string, token string) (string, error) {
 	}
 
 	if isID {
-		// Если это числовой ID, просто преобразуем его в int
-		var userID int
-		fmt.Sscanf(lastPart, "%d", &userID)
-		return string(userID), nil
+		return lastPart, nil
 	} else {
 		// Если это логин, запрашиваем ID через API
 		return getUserID(lastPart, token)
@@ -244,13 +236,13 @@ func MakeResult(vkURL string) {
 	}
 
 	isPosts, posts := getPosts(userID, token)
-	isGroups, groups := getGroups(userID, token)
-	success := isPosts && isGroups
+	//isGroups, groups := getGroups(userID, token)
+	success := isPosts
 
-	resultJSON := finalMarshal(groups, posts, success)
+	resultJSON := finalMarshal(posts, success)
 	fmt.Println(resultJSON)
 }
 
 func main() {
-	MakeResult("https://vk.com/tatianalarina_official")
+	MakeResult("https://vk.com/id7064629")
 }
