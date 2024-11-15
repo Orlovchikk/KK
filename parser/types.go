@@ -26,3 +26,11 @@ type GroupInfo struct {
 type GroupInfoResponse struct {
 	Response []GroupInfo `json:"response"`
 }
+
+type ParseRequest struct {
+	Link string `json:"link"`
+}
+
+type ParseResponse struct {
+	Result string `json:"result"`
+}

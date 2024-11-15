@@ -154,34 +154,6 @@ type ResultJSON struct {
 	Posts   map[string]Post `json:"posts"`
 }
 
-//type ResultJSON struct {
-//	Success       bool            `json:"success"`
-//	Posts         map[string]Post `json:"posts"`
-//	Subscriptions []string        `json:"subscriptions"`
-//}
-
-//func finalMarshal(subscriptions GroupInfoResponse, wall WallResponse, success bool) ResultJSON {
-//	posts := make(map[string]Post)
-//	for i, post := range wall.Response.Items {
-//		posts[fmt.Sprintf("post%d", i+1)] = Post{
-//			Text: post.Text,
-//			Date: post.Date,
-//		}
-//	}
-//
-//	subs := make([]string, len(subscriptions.Response))
-//
-//	for i, groupID := range subscriptions.Response {
-//		subs[i] = groupID.Name + ","
-//	}
-//	resultJSON := ResultJSON{
-//		Success:       success,
-//		Posts:         posts,
-//		Subscriptions: subs,
-//	}
-//	return resultJSON
-//}
-
 func finalMarshal(wall WallResponse, success bool) ResultJSON {
 	posts := make(map[string]Post)
 	for i, post := range wall.Response.Items {
@@ -223,7 +195,19 @@ func parseVKLink(vkURL string, token string) (string, error) {
 	}
 }
 
-func MakeResult(vkURL string) {
+func ParseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ParseRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
 	loadEnv()
 
 	// Получаем токен из .env
@@ -231,7 +215,7 @@ func MakeResult(vkURL string) {
 	if token == "" {
 		log.Fatalf("VK_ACCESS_TOKEN not set in .env file")
 	}
-	userID, err := parseVKLink(vkURL, token)
+	userID, err := parseVKLink(req.Link, token)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -242,8 +226,21 @@ func MakeResult(vkURL string) {
 
 	resultJSON := finalMarshal(posts, success)
 	fmt.Println(resultJSON)
+	resultJSONStr, err := json.Marshal(resultJSON)
+
+	if err != nil {
+		http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+		return
+	}
+
+	response := ParseResponse{Result: string(resultJSONStr)}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func main() {
-	MakeResult("https://vk.com/id7064629")
+	http.HandleFunc("/parse", ParseHandler)
+
+	fmt.Println("Parser listening on port 8000")
+	log.Fatal(http.ListenAndServe(":8000", nil))
 }
