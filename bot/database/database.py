@@ -4,10 +4,10 @@ from datetime import date
 from os.path import dirname, join
 
 from dotenv import load_dotenv
-from sqlalchemy import exc, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from .models import Balance, Base, User
+from .models import *
 
 dotenv_path = join(dirname(dirname(__file__)), ".env")
 load_dotenv(dotenv_path)
