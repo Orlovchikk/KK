@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from .models import Balance, Base, User
 
-dotenv_path = join(dirname(__file__), ".env")
+dotenv_path = join(dirname(dirname(__file__)), ".env")
 load_dotenv(dotenv_path)
 
 HOST = os.getenv("HOST")

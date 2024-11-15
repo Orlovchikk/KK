@@ -9,18 +9,22 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       - "5432:5432"
+    networks:
+      - linklens_network
 
   parser:
-    build: 
+    build:
       context: ./parser
       dockerfile: Dockerfile
     env_file:
       - ./parser/.env
     ports:
       - "8000:8000"
+    networks:
+      - linklens_network
 
   bot:
-    build: 
+    build:
       context: ./bot
       dockerfile: Dockerfile
     ports:
@@ -32,8 +36,13 @@ services:
     depends_on:
       - postgres
       - parser
+    networks:
+      - linklens_network
 
-
-    
 volumes:
   postgres_data:
+
+
+networks:
+  linklens_network:
+    driver: bridge

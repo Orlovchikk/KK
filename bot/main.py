@@ -12,13 +12,13 @@ from aiogram.types import CallbackQuery, Message
 from database.database import Database
 from dotenv import load_dotenv
 from model import analyze_profile
-
+from database.database import url
 import utils.keyboards as keyboards
 from utils.utils import translate_month_in_str
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
-
+print(url)
 TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 
