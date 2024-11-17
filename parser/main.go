@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/joho/godotenv"
 	"io"
 	"log"
 	"net/http"
@@ -10,8 +11,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-
-	"github.com/joho/godotenv"
 )
 
 func loadEnv() {
@@ -150,11 +149,11 @@ func getUserID(username, token string) (string, error) {
 }
 
 type ResultJSON struct {
-	Success bool            `json:"success"`
+	Success string          `json:"success"`
 	Posts   map[string]Post `json:"posts"`
 }
 
-func finalMarshal(wall WallResponse, success bool) ResultJSON {
+func finalMarshal(wall WallResponse, success string) ResultJSON {
 	posts := make(map[string]Post)
 	for i, post := range wall.Response.Items {
 		posts[fmt.Sprintf("post%d", i+1)] = Post{
@@ -222,10 +221,16 @@ func ParseHandler(w http.ResponseWriter, r *http.Request) {
 
 	isPosts, posts := getPosts(userID, token)
 	//isGroups, groups := getGroups(userID, token)
-	success := isPosts
+	var success string
+	if isPosts {
+		success = "Success receive data from account: " + userID
+		log.Println("Success receive data from account: " + userID)
+	} else {
+		success = "Cannot receive data from account: " + userID
+		log.Println("Cannot receive data from account: " + userID)
+	}
 
 	resultJSON := finalMarshal(posts, success)
-	fmt.Println(resultJSON)
 	resultJSONStr, err := json.Marshal(resultJSON)
 
 	if err != nil {
