@@ -5,12 +5,12 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 python-dotenv = "^1.0.1"
-gigachain-community = "^0.2.16.post3"
 aiogram = "^3.13.1"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
 asyncpg = "^0.30.0"
 requests = "^2.32.3"
 psycopg2-binary = "^2.9.10"
+langchain-gigachat = "^0.3.0"
 
 
 [tool.poetry.group.dev.dependencies]

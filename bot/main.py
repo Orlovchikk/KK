@@ -230,7 +230,7 @@ async def vk_profile_link_hanldler(message: Message):
             response = requests.post("http://parser:8000/parse", json={"link": text})
             response.raise_for_status()
             analyze = await analyze_profile(response.json()["result"])
-            if analyze == "Недостаточно данных о пользователе":
+            if analyze == "Недостаточно данных о пользователе.":
                 await message.answer(
                     "Мы не смогли найти достаточно информации о профиле. 😕 \nНе волнуйтесь, токен за эту попытку не был списан. Попробуйте отправить другую ссылку. 🔗"
                 )
