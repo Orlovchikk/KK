@@ -3,11 +3,12 @@ import random
 from datetime import date
 from os.path import dirname, join
 
+from database.models import Balance, Base, User
 from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from dateutil.relativedelta import relativedelta
 
-from database.models import User, Balance, Base
 
 dotenv_path = join(dirname(dirname(__file__)), ".env")
 load_dotenv(dotenv_path)
@@ -146,12 +147,12 @@ class Database:
             users = await db.execute(select(User).where(User.balance_id == balance_id))
             return users.scalars().all()
 
-    async def unlink_user_from_balance(self, user: User):
+    async def unlink_user_from_balance(self, user_id: int):
         async with self.session() as db:
             try:
-                user = await self.get_user(db, user_id=user.id)
+                user = await self.get_user(db, user_id=user_id)
                 user_balance = await db.scalar(
-                    select(Balance).where(Balance.owner_id == user.id)
+                    select(Balance).where(Balance.owner_id == user_id)
                 )
                 user.balance = user_balance
                 await db.commit()
@@ -164,10 +165,11 @@ class Database:
             try:
                 balance = await self.get_balance(db, user_id)
                 today = date.today()
+
                 if unit == "y":
-                    balance.subscription_end = today.replace(year=today.year + amount)
+                    balance.subscription_end = today + relativedelta(years=amount)
                 elif unit == "m":
-                    balance.subscription_end = today.replace(month=today.month + amount)
+                    balance.subscription_end = today + relativedelta(months=amount)
 
                 await db.commit()
             except Exception as e:

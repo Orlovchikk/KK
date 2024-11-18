@@ -3,7 +3,8 @@ import os
 from datetime import date
 from os.path import dirname, join
 
-import requests
+import aiohttp
+import utils.keyboards as keyboards
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
@@ -12,7 +13,6 @@ from aiogram.types import CallbackQuery, Message
 from database.database import Database
 from dotenv import load_dotenv
 from model import analyze_profile
-import utils.keyboards as keyboards
 from utils.utils import translate_month_in_str
 
 dotenv_path = join(dirname(__file__), ".env")
@@ -227,9 +227,13 @@ async def vk_profile_link_hanldler(message: Message):
             await message.answer(
                 "Обрабатываем профиль, пожалуйста, подождите немного... ⏳"
             )
-            response = requests.post("http://parser:8000/parse", json={"link": text})
+            async with aiohttp.ClientSession() as session:
+                response = await session.post(
+                    url="http://parser:8000/parse", json={"link": text}
+                )
             response.raise_for_status()
-            analyze = await analyze_profile(response.json()["result"])
+            json = await response.json()
+            analyze = await analyze_profile(json["result"])
             if analyze == "Недостаточно данных о пользователе.":
                 await message.answer(
                     "Мы не смогли найти достаточно информации о профиле. 😕 \nНе волнуйтесь, токен за эту попытку не был списан. Попробуйте отправить другую ссылку. 🔗"
@@ -316,12 +320,11 @@ async def users_handler(message: Message):
 
 async def users_callback_handler(callback_query: CallbackQuery):
     user_id_to_delete = callback_query.data[len("delete_") :]
-    user_to_delete = await db.get_user(user_id=user_id_to_delete)
     balance = await db.get_balance(user_id=callback_query.from_user.id)
 
     if balance.owner_id == callback_query.from_user.id:
         try:
-            await db.unlink_user_from_balance(user_to_delete)
+            await db.unlink_user_from_balance(int(user_id_to_delete))
             await callback_query.message.answer(
                 f"Пользователь {user_id_to_delete} удален с вашего баланса."
             )

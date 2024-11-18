@@ -8,9 +8,9 @@ python-dotenv = "^1.0.1"
 aiogram = "^3.13.1"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
 asyncpg = "^0.30.0"
-requests = "^2.32.3"
 psycopg2-binary = "^2.9.10"
 langchain-gigachat = "^0.3.0"
+python-dateutil = "^2.9.0.post0"
 
 
 [tool.poetry.group.dev.dependencies]

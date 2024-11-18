@@ -2,9 +2,10 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
-    Message,
     ReplyKeyboardMarkup,
 )
+import asyncio
+
 
 choose_plan = ReplyKeyboardMarkup(
     keyboard=[
@@ -71,7 +72,7 @@ subs = InlineKeyboardMarkup(
 )
 
 
-def users(users):
+async def users(users):
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
