@@ -1,11 +1,5 @@
-from aiogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-)
-import asyncio
-
+from aiogram.types import (InlineKeyboardButton, InlineKeyboardMarkup,
+                           KeyboardButton, ReplyKeyboardMarkup)
 
 choose_plan = ReplyKeyboardMarkup(
     keyboard=[
