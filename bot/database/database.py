@@ -7,18 +7,17 @@ from database.models import Balance, Base, User
 from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
-                                    create_async_engine)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 dotenv_path = join(dirname(dirname(__file__)), ".env")
 load_dotenv(dotenv_path)
 
 HOST = os.getenv("HOST")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
-PGUSER = os.getenv("PGUSER")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 PORT = os.getenv("PORT")
-url = f"postgresql+asyncpg://{PGUSER}:{POSTGRES_PASSWORD}@postgres-LinkLens:{PORT}/{POSTGRES_DB}"
+url = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@postgres-LinkLens/{POSTGRES_DB}"
 
 
 class Database:
